@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"bytes"
+	"encoding/csv"
 	"fmt"
 	"strings"
 	"time"
@@ -12,50 +14,79 @@ type ByCallsignCommand struct {
 	Callsign string
 	FromTime time.Time
 	ToTime   time.Time
+	Fields   []string
 }
 
-func NewByCallsignCommand(command Command) (*ByCallsignCommand, error) {
-	if len(command.Args) < 1 || len(command.Args) > 3 {
-		return nil, fmt.Errorf("Invalid number of arguments for byCallsign")
+func NewByCallsignCommand(command Command, session *CommandSession) (*ByCallsignCommand, error) {
+	if len(command.ParsedArgs) != 1 && command.ParsedArgs[0].Type != Word {
+		return nil, fmt.Errorf("invalid number of arguments for byCallsign")
 	}
-	callsign := strings.ToUpper(command.Args[0])
+	callsign := strings.ToUpper(command.ParsedArgs[0].Value)
 	if !ValidCallsign(callsign) {
-		return nil, fmt.Errorf("Invalid callsign")
-	}
-
-	now := time.Now()
-
-	// Default from time is one hour ago
-	fromTime := now.Add(-1 * time.Hour)
-	if len(command.Args) >= 2 && ValidISO8601(command.Args[1]) {
-		fromTime, _ = time.Parse(time.RFC3339, command.Args[1])
-	} else if len(command.Args) >= 2 {
-		return nil, fmt.Errorf("Invalid from time format")
-	}
-
-	// Default to time is now
-	toTime := now
-	if len(command.Args) == 3 && ValidISO8601(command.Args[2]) {
-		toTime, _ = time.Parse(time.RFC3339, command.Args[2])
-	} else if len(command.Args) == 3 {
-		return nil, fmt.Errorf("Invalid to time format")
+		return nil, fmt.Errorf("invalid callsign")
 	}
 
 	return &ByCallsignCommand{
 		Callsign: callsign,
-		FromTime: fromTime,
-		ToTime:   toTime,
+		FromTime: session.FromTime,
+		ToTime:   session.ToTime,
+		Fields:   session.Fields,
 	}, nil
 }
 
-func ByCallsign(byCallsignCommand ByCallsignCommand) (wspr_live.ApiResponse, error) {
+func ByCallsign(byCallsignCommand *ByCallsignCommand) (string, error) {
 	queryResponse, err := wspr_live.QueryByCallsign(
 		byCallsignCommand.Callsign,
 		byCallsignCommand.FromTime,
 		byCallsignCommand.ToTime,
 	)
+
 	if err != nil {
-		return queryResponse, err
+		return "", err
 	}
-	return queryResponse, nil
+
+	df := queryResponse.ToDataFrame().Select(byCallsignCommand.Fields)
+	if df.Err != nil {
+		return "", df.Err
+	}
+
+	var buffer bytes.Buffer
+	if err := df.WriteCSV(&buffer); err != nil {
+		return "", err
+	}
+
+	return prettyFmtCSV(buffer.String())
+}
+
+func prettyFmtCSV(csvString string) (string, error) {
+	reader := csv.NewReader(strings.NewReader(csvString))
+	records, err := reader.ReadAll()
+	if err != nil {
+		return "", fmt.Errorf("error reading CSV: %w", err)
+	}
+
+	// Find the maximum width of each column for alignment
+	maxWidth := make([]int, len(records[0]))
+	for _, record := range records {
+		for i, field := range record {
+			if len(field) > maxWidth[i] {
+				maxWidth[i] = len(field)
+			}
+		}
+	}
+
+	var builder strings.Builder
+
+	// Build the formatted CSV string
+	for _, record := range records {
+		for i, field := range record {
+			if i > 0 {
+				builder.WriteString(", ")
+			}
+			fmt.Fprintf(&builder, "%-*s", maxWidth[i], field)
+		}
+		builder.WriteString("\n")
+	}
+
+	return builder.String(), nil
 }
