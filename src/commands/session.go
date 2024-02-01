@@ -10,7 +10,9 @@ type CommandSession struct {
 	FromTime    time.Time
 	ToTime      time.Time
 	IntervalStr string
+	Limit       int
 	Fields      []string
+	MinSnr      int
 }
 
 var fieldList = []string{
@@ -27,7 +29,9 @@ func NewDefaultCommandSession() *CommandSession {
 		FromTime:    fromTime,
 		ToTime:      toTime,
 		IntervalStr: "1 hour ago",
+		Limit:       10,
 		Fields:      fieldList[0:10], // through snr
+		MinSnr:      0,
 	}
 	return &cs
 }
@@ -41,6 +45,8 @@ func timesFromInterval(interval time.Duration, endpoint *time.Time) (time.Time, 
 
 	return fromTime, toTime
 }
+
+func GetValidFields() []string { return fieldList }
 
 func (cs *CommandSession) SetFields(fields []string) error {
 	valid := true
@@ -63,4 +69,21 @@ func (cs *CommandSession) SetFields(fields []string) error {
 		return fmt.Errorf("invalid fields %s", strings.Join(nonExistantFields, ", "))
 	}
 
+}
+
+func (cs *CommandSession) String() string {
+	return fmt.Sprintf(`
+Session parameters:
+	fields: %s
+	interval: %s (from %s to %s)
+	limit: %d
+	min_snr: %d
+`,
+		strings.Join(cs.Fields, ", "),
+		cs.IntervalStr,
+		cs.FromTime.Format(time.RFC3339),
+		cs.ToTime.Format(time.RFC3339),
+		cs.Limit,
+		cs.MinSnr,
+	)
 }

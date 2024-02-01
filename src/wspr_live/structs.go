@@ -1,8 +1,17 @@
 package wspr_live
 
 import (
+	"time"
+
 	"github.com/go-gota/gota/dataframe"
 )
+
+type QueryByCallsignOptions struct {
+	FromTime time.Time
+	ToTime   time.Time
+	Limit    int
+	MinSnr   int
+}
 
 type MetaData struct {
 	Name string `json:"name"`

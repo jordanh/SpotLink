@@ -3,12 +3,12 @@ package commandline
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/chzyer/readline"
 	"github.com/jordanh/SpotLink/src/commands"
-	"github.com/kr/pretty"
 	"github.com/tj/go-naturaldate"
 )
 
@@ -37,8 +37,8 @@ func (cl *CommandLine) handleCommands() {
 			if err != nil {
 				cl.responseChan <- commands.CommandResponse{Result: err.Error()}
 			} else {
-				var builder strings.Builder
-				builder.WriteString(
+				var sb strings.Builder
+				sb.WriteString(
 					fmt.Sprintf(
 						"Callsign: %s, From Time: %s, To Time: %s",
 						byCallsignCommand.Callsign,
@@ -46,54 +46,77 @@ func (cl *CommandLine) handleCommands() {
 						cl.session.ToTime.Format(time.RFC3339),
 					),
 				)
-				builder.WriteString("\n\n")
+				sb.WriteString("\n\n")
 				result, err := commands.ByCallsign(byCallsignCommand)
 				if err != nil {
-					builder.WriteString(err.Error())
+					sb.WriteString(err.Error())
 				} else {
-					builder.WriteString(result)
+					sb.WriteString(result)
 				}
-				cl.responseChan <- commands.CommandResponse{Result: builder.String()}
+				cl.responseChan <- commands.CommandResponse{Result: sb.String()}
 			}
 		case "help":
-			pretty.Println(cmd)
 			switch len(cmd.ParsedArgs) {
 			case 0:
 				cl.responseChan <- commands.CommandResponse{Result: `Available commands:
 - byCallsign callsign: Search by callsign with time range
 - help [command]: List all commands or help for a specific command
-- set: Set parameters used by commands
+- set [field1=value1] [field2=field2] ...: Set parameters used by commands
+- show:  Show current parameters used by commands
 - quit: Quit
 `}
 			case 1:
 				switch cmd.ParsedArgs[0].Value {
 				case "set":
-					cl.responseChan <- commands.CommandResponse{Result: `set [field]=[value]
+					var sb strings.Builder
+					sb.WriteString("set [field1=value1] [field2=value2]...\n")
+					sb.WriteString(`
+ fields: Comma-separated list of fields to return from query in order
+         Example: fields=time,freq,rx_sign,rx_loc,snr
+`)
 
- fields: Comma-separated list of fields to return when querying
+					sb.WriteString("\n")
+					sb.WriteString("\tvalid fields:\n")
+					for _, field := range commands.GetValidFields() {
+						sb.WriteString(fmt.Sprintln("\t\t - ", field))
+					}
+					sb.WriteString(`
 interval: Natural-language interval before the current time used when searching
-          (examples: "6 hours ago" or "1 month ago")
-`}
+          (default: "1 hour ago"). Examples: "6 hours ago" or "1 month ago"
+`)
+					sb.WriteString(`
+   limit: maximum number of query rows to return, integer (default: 10)
+`)
+					cl.responseChan <- commands.CommandResponse{Result: sb.String()}
+
 				default:
 					cl.responseChan <- commands.CommandResponse{Result: `no additional help available`}
 				}
 			}
 		case "set":
-			var builder strings.Builder
+			var sb strings.Builder
 			for _, parsedArg := range cmd.ParsedArgs {
 				switch parsedArg.Type {
 				case commands.Word:
-					builder.WriteString(fmt.Sprint("warning: skipping unknown word argument: ", parsedArg.Value))
+					sb.WriteString(fmt.Sprint("warning: skipping unknown word argument: ", parsedArg.Value))
 				case commands.KeyValuePair:
 					switch parsedArg.Key {
 					case "fields":
-						builder.WriteString(fmt.Sprintln("fields:", parsedArg.Value))
+						sb.WriteString(fmt.Sprintln("fields:", parsedArg.Value))
 						err := cl.session.SetFields(strings.Split(parsedArg.Value, ","))
 						if err != nil {
-							builder.WriteString(fmt.Sprint("error: unable to set fields ", parsedArg.Value))
+							sb.WriteString(fmt.Sprint("error: unable to set fields ", parsedArg.Value))
+						}
+					case "limit":
+						var err error
+						cl.session.Limit, err = strconv.Atoi(parsedArg.Value)
+						if err != nil {
+							sb.WriteString(fmt.Sprint("error: unable to set limit using value ", parsedArg.Value))
+						} else {
+							sb.WriteString(fmt.Sprintln("limit:", parsedArg.Value))
 						}
 					case "interval":
-						builder.WriteString(fmt.Sprintln("interval:", parsedArg.Value))
+						sb.WriteString(fmt.Sprintln("interval:", parsedArg.Value))
 						now := time.Now()
 						newDate, err := naturaldate.Parse(
 							parsedArg.Value,
@@ -101,16 +124,25 @@ interval: Natural-language interval before the current time used when searching
 							naturaldate.WithDirection(naturaldate.Past),
 						)
 						if err == nil {
-							fmt.Println(pretty.Sprint(newDate))
 							cl.session.FromTime, cl.session.ToTime = newDate, now
 						} else {
-							builder.WriteString(fmt.Sprint("error: unable to parse time interval ", parsedArg.Value))
+							sb.WriteString(fmt.Sprint("error: unable to parse time interval ", parsedArg.Value))
+						}
+					case "min_snr":
+						var err error
+						cl.session.MinSnr, err = strconv.Atoi(parsedArg.Value)
+						if err != nil {
+							sb.WriteString(fmt.Sprint("error: unable to set min_snr using value ", parsedArg.Value))
+						} else {
+							sb.WriteString(fmt.Sprintln("min_snr:", parsedArg.Value))
 						}
 					}
 				}
 			}
-			cl.responseChan <- commands.CommandResponse{Result: builder.String()}
-		case "quit":
+			cl.responseChan <- commands.CommandResponse{Result: sb.String()}
+		case "show":
+			cl.responseChan <- commands.CommandResponse{Result: cl.session.String()}
+		case "q", "quit":
 			close(cl.commandChan)
 			cl.responseChan <- commands.CommandResponse{Result: "Exiting"}
 			cl.done <- struct{}{}
@@ -136,7 +168,10 @@ func (cl *CommandLine) CommandLineLoop() {
 		readline.PcItem("set",
 			readline.PcItem("fields"),
 			readline.PcItem("interval"),
+			readline.PcItem("min_snr"),
+			readline.PcItem("limit"),
 		),
+		readline.PcItem("show"),
 	)
 
 	go cl.handleCommands()

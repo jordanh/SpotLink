@@ -14,7 +14,9 @@ type ByCallsignCommand struct {
 	Callsign string
 	FromTime time.Time
 	ToTime   time.Time
+	Limit    int
 	Fields   []string
+	MinSnr   int
 }
 
 func NewByCallsignCommand(command Command, session *CommandSession) (*ByCallsignCommand, error) {
@@ -30,15 +32,22 @@ func NewByCallsignCommand(command Command, session *CommandSession) (*ByCallsign
 		Callsign: callsign,
 		FromTime: session.FromTime,
 		ToTime:   session.ToTime,
+		Limit:    session.Limit,
 		Fields:   session.Fields,
+		MinSnr:   session.MinSnr,
 	}, nil
 }
 
 func ByCallsign(byCallsignCommand *ByCallsignCommand) (string, error) {
+	options := wspr_live.QueryByCallsignOptions{
+		FromTime: byCallsignCommand.FromTime,
+		ToTime:   byCallsignCommand.ToTime,
+		Limit:    byCallsignCommand.Limit,
+		MinSnr:   byCallsignCommand.MinSnr,
+	}
 	queryResponse, err := wspr_live.QueryByCallsign(
 		byCallsignCommand.Callsign,
-		byCallsignCommand.FromTime,
-		byCallsignCommand.ToTime,
+		options,
 	)
 
 	if err != nil {

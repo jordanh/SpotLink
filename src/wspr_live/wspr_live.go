@@ -8,20 +8,19 @@ import (
 	"net/http"
 	"net/url"
 	"text/template"
-	"time"
 )
 
-func QueryByCallsign(callsign string, fromTime time.Time, toTime time.Time) (ApiResponse, error) {
+func QueryByCallsign(callsign string, options QueryByCallsignOptions) (ApiResponse, error) {
 	// Define your SQL query
 	queryTmplStr := `SELECT *
 FROM wspr.rx
 WHERE tx_sign = '{{.Callsign}}'
-AND
-time > '{{.FromTime}}' AND time <= '{{.ToTime}}'
+AND time > '{{.FromTime}}' AND time <= '{{.ToTime}}'
+AND snr > {{.MinSnr}}
 ORDER BY time DESC, snr DESC
-LIMIT 10
+LIMIT {{.Limit}}
 FORMAT JSONCompact
-    `
+`
 
 	queryTmpl, err := template.New("query").Parse(queryTmplStr)
 	if err != nil {
@@ -32,10 +31,14 @@ FORMAT JSONCompact
 		Callsign string
 		FromTime string
 		ToTime   string
+		Limit    int
+		MinSnr   int
 	}{
 		Callsign: callsign,
-		FromTime: fromTime.UTC().Format("2006-01-02 15:04:05"),
-		ToTime:   toTime.UTC().Format("2006-01-02 15:04:05"),
+		FromTime: options.FromTime.UTC().Format("2006-01-02 15:04:05"),
+		ToTime:   options.ToTime.UTC().Format("2006-01-02 15:04:05"),
+		Limit:    options.Limit,
+		MinSnr:   options.MinSnr,
 	}
 
 	var queryBuf bytes.Buffer
