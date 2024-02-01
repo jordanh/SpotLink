@@ -54,6 +54,10 @@ func ByCallsign(byCallsignCommand *ByCallsignCommand) (string, error) {
 		return "", err
 	}
 
+	if queryResponse.Rows == 0 {
+		return "", fmt.Errorf("query returned no rows")
+	}
+
 	df := queryResponse.ToDataFrame().Select(byCallsignCommand.Fields)
 	if df.Err != nil {
 		return "", df.Err
