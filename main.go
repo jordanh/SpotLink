@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/jordanh/SpotLink/src/aws_lambda"
 	"github.com/jordanh/SpotLink/src/commandline"
 )
 
@@ -27,8 +28,8 @@ func main() {
 	// Handle help flag
 	if *helpFlag {
 		fmt.Println("Usage of this program:")
-		fmt.Println("-h, --help          Print this help message")
-		fmt.Println("-i, --interactive   Attach to stdio and present an interactive command line")
+		fmt.Println("-h, Print this help message")
+		fmt.Println("-i, Attach to stdio and present an interactive command line")
 		return
 	}
 
@@ -36,11 +37,6 @@ func main() {
 	if *interactiveFlag {
 		doInteraciveMode()
 	} else {
-		// TK TODO
+		aws_lambda.StartLambda()
 	}
 }
-
-// func validISO8601(dateTime string) bool {
-// 	_, err := time.Parse(time.RFC3339, dateTime)
-// 	return err == nil
-// }
